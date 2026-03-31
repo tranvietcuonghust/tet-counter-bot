@@ -1,6 +1,8 @@
 import os
 import random
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta
 import pytz
 from telegram import Update
@@ -243,11 +245,32 @@ async def mychatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+def run_health_server():
+    """HTTP server nhỏ để Render Web Service detect được port."""
+    port = int(os.environ.get("PORT", 8080))
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, *args):
+            pass  # tắt log HTTP cho gọn
+
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    logger.info(f"Health server chạy trên port {port}")
+    server.serve_forever()
+
+
 def main():
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN chưa được set!")
     if not CHAT_IDS:
         logger.warning("CHAT_IDS chưa được set — bot sẽ không tự gửi tin nhắn!")
+
+    # Chạy health server trong thread riêng để Render detect port
+    health_thread = threading.Thread(target=run_health_server, daemon=True)
+    health_thread.start()
 
     app = Application.builder().token(BOT_TOKEN).build()
 
